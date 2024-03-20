@@ -28,6 +28,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         println!("Received message from {}: {}", src_addr, received_message);
         handle_message(received_message, &src_addr, &socket, &time_keeper).await?;
-        sleep(Duration::from_secs(5)).await; // Customize based on how frequently you want to update or respond
+        sleep(Duration::from_secs(5)).await;
     }
 }

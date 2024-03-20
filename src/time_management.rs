@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
+use chrono::Utc;
 
 #[derive(Debug, Clone)]
 pub struct TimeKeeper {
-    offset: Arc<Mutex<i64>>, // Shared state among asynchronous tasks
+    offset: Arc<Mutex<i64>>, // The offset to the real system time in milliseconds.
 }
 
 impl TimeKeeper {
@@ -12,14 +13,17 @@ impl TimeKeeper {
         }
     }
 
-    pub fn adjust_time(&self, adjustment: i64) {
+    pub fn adjust_time(&self, new_time: i64) {
+        let current_system_time = Utc::now().timestamp_millis();
         let mut offset = self.offset.lock().unwrap();
-        *offset += adjustment;
-        println!("Adjusted time by {}ms. New offset: {}ms", adjustment, *offset);
+        *offset = new_time - current_system_time;
+
+        // Directly use the new_time for logging to avoid confusion
+        println!("Time adjusted. New simulated current time (Unix timestamp in ms): {}", new_time);
     }
 
     pub fn current_time(&self) -> i64 {
         let offset = self.offset.lock().unwrap();
-        chrono::Utc::now().timestamp_millis() + *offset
+        Utc::now().timestamp_millis() + *offset
     }
 }
