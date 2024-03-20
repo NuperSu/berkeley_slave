@@ -1,9 +1,10 @@
 use tokio::net::UdpSocket;
+use std::net::SocketAddr;
 use crate::time_management::TimeKeeper;
 use serde_json::{Value, json};
 use std::error::Error;
 
-pub async fn handle_message<A: std::net::ToSocketAddrs>(msg: String, src_addr: A, socket: &UdpSocket, time_keeper: &TimeKeeper) -> Result<(), Box<dyn Error>> {
+pub async fn handle_message(msg: String, src_addr: &SocketAddr, socket: &UdpSocket, time_keeper: &TimeKeeper) -> Result<(), Box<dyn Error>> {
     let parsed_msg: Value = serde_json::from_str(&msg)?;
     match parsed_msg["type"].as_str() {
         Some("adjust_time") => {
