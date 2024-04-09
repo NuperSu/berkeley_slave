@@ -24,26 +24,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     let slave_time_adjust = Arc::new(SlaveTimeAdjust::new(Arc::clone(&socket), master_address.clone()));
 
-    // Clone the Arc for use in each async task
-    let slave_time_adjust_for_adjustments = Arc::clone(&slave_time_adjust);
-    let slave_time_adjust_for_reporting = Arc::clone(&slave_time_adjust);
-
-    let time_adjust_handle = tokio::spawn(async move {
-        if let Err(e) = slave_time_adjust_for_adjustments.listen_for_adjustments().await {
-            eprintln!("Error while listening for adjustments: {}", e);
-        }
-    });
-
-    let report_time_handle = tokio::spawn(async move {
-        loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await; // Adjust as needed
-            if let Err(e) = slave_time_adjust_for_reporting.report_current_time().await {
-                eprintln!("Error reporting current time: {}", e);
-            }
-        }
-    });
-
-    let _ = tokio::try_join!(time_adjust_handle, report_time_handle);
+    // Listening for messages from the master, including time requests and adjustments.
+    let _ = slave_time_adjust.listen_for_adjustments().await;
 
     Ok(())
 }

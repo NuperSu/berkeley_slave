@@ -7,6 +7,7 @@ use std::error::Error;
 use tokio::time::Duration;
 #[derive(Serialize, Deserialize, Debug)]
 struct TimeMessage {
+    #[serde(rename = "type")]
     msg_type: String,
     time: Option<i64>,
     adjustment: Option<i64>,
@@ -31,16 +32,23 @@ impl SlaveTimeAdjust {
         loop {
             let message = receive_message(&self.socket, Duration::from_secs(5)).await?;
             match serde_json::from_str::<TimeMessage>(&message) {
-                Ok(adjustment_msg) => {
-                    // Check if `adjustment` is Some and then call `adjust_time` with the unwrapped value
-                    if let Some(adjustment) = adjustment_msg.adjustment {
-                        self.adjust_time(adjustment).await;
-                    } else {
-                        // Optionally, handle the case where `adjustment` is None
-                        eprintln!("Adjustment value missing in message");
+                Ok(msg) => {
+                    match msg.msg_type.as_str() {
+                        "adjust_time" => {
+                            if let Some(adjustment) = msg.adjustment {
+                                self.adjust_time(adjustment).await;
+                            } else {
+                                eprintln!("Adjustment value missing in message");
+                            }
+                        },
+                        "request_time" => {
+                            // Respond to the master's request for the current time
+                            self.report_current_time().await?;
+                        },
+                        _ => eprintln!("Unknown message type received: {}", msg.msg_type),
                     }
                 },
-                Err(e) => eprintln!("Failed to parse adjustment message: {:?}", e),
+                Err(e) => eprintln!("Failed to parse received message: {}", e),
             }
         }
     }
