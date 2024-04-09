@@ -5,10 +5,11 @@ use crate::network::{send_message, receive_message};
 use std::sync::{Arc, Mutex};
 use std::error::Error;
 use tokio::time::Duration;
-
 #[derive(Serialize, Deserialize, Debug)]
-struct TimeAdjustmentMessage {
-    adjustment: i64, // Adjustment in milliseconds
+struct TimeMessage {
+    msg_type: String,
+    time: Option<i64>,
+    adjustment: Option<i64>,
 }
 
 pub struct SlaveTimeAdjust {
@@ -29,9 +30,15 @@ impl SlaveTimeAdjust {
     pub async fn listen_for_adjustments(&self) -> Result<(), Box<dyn Error>> {
         loop {
             let message = receive_message(&self.socket, Duration::from_secs(5)).await?;
-            match serde_json::from_str::<TimeAdjustmentMessage>(&message) {
+            match serde_json::from_str::<TimeMessage>(&message) {
                 Ok(adjustment_msg) => {
-                    self.adjust_time(adjustment_msg.adjustment).await;
+                    // Check if `adjustment` is Some and then call `adjust_time` with the unwrapped value
+                    if let Some(adjustment) = adjustment_msg.adjustment {
+                        self.adjust_time(adjustment).await;
+                    } else {
+                        // Optionally, handle the case where `adjustment` is None
+                        eprintln!("Adjustment value missing in message");
+                    }
                 },
                 Err(e) => eprintln!("Failed to parse adjustment message: {:?}", e),
             }
@@ -44,14 +51,24 @@ impl SlaveTimeAdjust {
         println!("Time adjusted by {}ms. New offset: {}ms", adjustment, *time_offset);
     }
 
-    // Optionally, implement a function to periodically report current time to the master
     pub async fn report_current_time(&self) -> Result<(), Box<dyn Error>> {
-        let time_offset = self.time_offset.lock().unwrap();
-        let current_time = Utc::now().timestamp_millis() + *time_offset;
-        let message = serde_json::to_string(&TimeAdjustmentMessage {
-            adjustment: current_time, // Here 'adjustment' field is reused to send current time
+        // Clone or copy necessary data before the async block
+        let socket_clone = self.socket.clone();
+        let master_address = self.master_address.clone();
+
+        // Scope to ensure MutexGuard is dropped before await
+        let current_time = {
+            let time_offset = self.time_offset.lock().unwrap(); // Lock is only held within this scope
+            Utc::now().timestamp_millis() + *time_offset // Calculate current time
+        }; // MutexGuard is dropped here
+
+        let message = serde_json::to_string(&TimeMessage {
+            msg_type: "time_report".to_string(),
+            time: Some(current_time),
+            adjustment: None, // Not used for time reports, can be None
         })?;
-        send_message(&self.socket, &message, &self.master_address).await?;
+
+        send_message(&socket_clone, &message, &master_address).await?;
         Ok(())
     }
 }
