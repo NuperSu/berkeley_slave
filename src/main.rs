@@ -1,33 +1,49 @@
-mod time_management;
-mod network;
+use tokio::net::UdpSocket;
+use std::env;
+use std::sync::Arc;
+use std::error::Error;
 
-use tokio::{time::{sleep, Duration}, net::UdpSocket};
-use std::{env, error::Error};
-use time_management::TimeKeeper;
-use network::handle_message;
+mod network;
+mod time_adjust;
+
+use time_adjust::SlaveTimeAdjust;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    let mut args = env::args();
-    if args.len() < 2 {
-        println!("Usage: {} [Slave Node Address]", args.next().unwrap());
-        return Ok(());
+    let args: Vec<String> = env::args().collect();
+    if args.len() < 3 {
+        eprintln!("Usage: {} <Slave Bind Address> <Master Node Address>", args[0]);
+        return Err("Insufficient arguments provided".into());
     }
 
-    let slave_address = args.nth(1).unwrap();
-    println!("Slave node starting. Binding to address: {}", slave_address);
-    let socket = UdpSocket::bind(&slave_address).await?;
-    println!("Slave node running on {}", slave_address);
+    let slave_bind_address = &args[1];
+    let master_address = &args[2];
 
-    let time_keeper = TimeKeeper::new();
+    let socket = Arc::new(UdpSocket::bind(slave_bind_address).await?);
+    println!("Slave node bound to {}", socket.local_addr()?);
 
-    loop {
-        let mut buf = [0; 1024];
-        let (number_of_bytes, src_addr) = socket.recv_from(&mut buf).await?;
-        let received_message = String::from_utf8_lossy(&buf[..number_of_bytes]).into_owned();
+    let slave_time_adjust = Arc::new(SlaveTimeAdjust::new(Arc::clone(&socket), master_address.clone()));
 
-        println!("Received message from {}: {}", src_addr, received_message);
-        handle_message(received_message, &src_addr, &socket, &time_keeper).await?;
-        sleep(Duration::from_secs(5)).await;
-    }
+    // Clone the Arc for use in each async task
+    let slave_time_adjust_for_adjustments = Arc::clone(&slave_time_adjust);
+    let slave_time_adjust_for_reporting = Arc::clone(&slave_time_adjust);
+
+    let time_adjust_handle = tokio::spawn(async move {
+        if let Err(e) = slave_time_adjust_for_adjustments.listen_for_adjustments().await {
+            eprintln!("Error while listening for adjustments: {}", e);
+        }
+    });
+
+    let report_time_handle = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await; // Adjust as needed
+            if let Err(e) = slave_time_adjust_for_reporting.report_current_time().await {
+                eprintln!("Error reporting current time: {}", e);
+            }
+        }
+    });
+
+    let _ = tokio::try_join!(time_adjust_handle, report_time_handle);
+
+    Ok(())
 }

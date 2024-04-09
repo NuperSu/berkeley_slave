@@ -1,25 +1,21 @@
-use tokio::net::UdpSocket;
-use std::net::SocketAddr;
-use crate::time_management::TimeKeeper;
-use serde_json::{Value, json};
-use std::error::Error;
+use tokio::net::{UdpSocket};
+use tokio::time::{Duration, timeout};
+use std::io::{Result, Error, ErrorKind};
 
-pub async fn handle_message(msg: String, src_addr: &SocketAddr, socket: &UdpSocket, time_keeper: &TimeKeeper) -> Result<(), Box<dyn Error>> {
-    let parsed_msg: Value = serde_json::from_str(&msg)?;
-    match parsed_msg["type"].as_str() {
-        Some("adjust_time") => {
-            if let Some(adjustment) = parsed_msg["adjustment"].as_i64() {
-                time_keeper.adjust_time(adjustment);
-            }
-        }
-        _ => println!("Unknown message: {}", msg),
-    }
-
-    // Periodically send the current time to the master
-    let report = json!({
-        "type": "time_report",
-        "time": time_keeper.current_time(),
-    }).to_string();
-    socket.send_to(report.as_bytes(), src_addr).await?;
+pub async fn send_message(socket: &UdpSocket, message: &str, addr: &str) -> Result<()> {
+    socket.send_to(message.as_bytes(), addr).await?;
     Ok(())
+}
+
+pub async fn receive_message(socket: &UdpSocket, timeout_duration: Duration) -> Result<String> {
+    let mut buf = [0; 1024];
+    // Correcting the pattern matching and handling below
+    let (received, _) = match timeout(timeout_duration, socket.recv_from(&mut buf)).await {
+        Ok(Ok(result)) => result, // Directly using result which is a tuple (usize, SocketAddr)
+        Ok(Err(e)) => return Err(e),
+        Err(_) => return Err(Error::new(ErrorKind::TimedOut, "Receive timed out")),
+    };
+
+    let received_msg = String::from_utf8_lossy(&buf[..received]).to_string();
+    Ok(received_msg)
 }
