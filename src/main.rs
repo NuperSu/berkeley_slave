@@ -22,10 +22,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let socket = Arc::new(UdpSocket::bind(slave_bind_address).await?);
     println!("Slave node bound to {}", socket.local_addr()?);
 
-    let slave_time_adjust = Arc::new(SlaveTimeAdjust::new(Arc::clone(&socket), master_address.clone()));
+    let slave_time_adjust = SlaveTimeAdjust::new(Arc::clone(&socket), master_address.clone());
 
-    // Listening for messages from the master, including time requests and adjustments.
-    let _ = slave_time_adjust.listen_for_adjustments().await;
+    // Instead of spawning a separate task, invoke listen_for_adjustments directly in the main task.
+    // This keeps the main task alive and continuously listening for messages.
+    if let Err(e) = slave_time_adjust.listen_for_adjustments().await {
+        eprintln!("Error while listening for adjustments: {}", e);
+    }
 
     Ok(())
 }

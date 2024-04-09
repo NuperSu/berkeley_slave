@@ -30,7 +30,7 @@ impl SlaveTimeAdjust {
 
     pub async fn listen_for_adjustments(&self) -> Result<(), Box<dyn Error>> {
         loop {
-            let message = receive_message(&self.socket, Duration::from_secs(5)).await?;
+            let message = receive_message(&self.socket, Duration::from_secs(1_000)).await?;
             match serde_json::from_str::<TimeMessage>(&message) {
                 Ok(msg) => {
                     match msg.msg_type.as_str() {
