@@ -53,7 +53,7 @@ impl SlaveTimeAdjust {
 
     async fn adjust_time(&self, adjustment: i64) {
         let mut time_offset = self.time_offset.lock().unwrap();
-        *time_offset -= adjustment;
+        *time_offset += adjustment;
         println!("Time adjusted by {}ms. New offset: {}ms", adjustment, *time_offset);
     }
 
