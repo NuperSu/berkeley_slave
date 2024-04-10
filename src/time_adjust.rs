@@ -5,6 +5,7 @@ use crate::network::{send_message, receive_message};
 use std::sync::{Arc, Mutex};
 use std::error::Error;
 use tokio::time::Duration;
+
 #[derive(Serialize, Deserialize, Debug)]
 struct TimeMessage {
     #[serde(rename = "type")]
@@ -38,13 +39,13 @@ impl SlaveTimeAdjust {
                             } else {
                                 eprintln!("Adjustment value missing in message");
                             }
-                        },
+                        }
                         "request_time" => {
                             self.report_current_time(&sender_address.to_string()).await?;
-                        },
+                        }
                         _ => eprintln!("Unknown message type received: {}", msg.msg_type),
                     }
-                },
+                }
                 Err(e) => eprintln!("Failed to parse received message: {}", e),
             }
         }
