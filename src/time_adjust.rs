@@ -15,22 +15,20 @@ struct TimeMessage {
 
 pub struct SlaveTimeAdjust {
     socket: Arc<UdpSocket>,
-    master_address: String,
     time_offset: Arc<Mutex<i64>>, // Adjusted time offset in milliseconds
 }
 
 impl SlaveTimeAdjust {
-    pub fn new(socket: Arc<UdpSocket>, master_address: String) -> Self {
+    pub fn new(socket: Arc<UdpSocket>) -> Self {
         Self {
             socket,
-            master_address,
             time_offset: Arc::new(Mutex::new(0)),
         }
     }
 
     pub async fn listen_for_adjustments(&self) -> Result<(), Box<dyn Error>> {
         loop {
-            let message = receive_message(&self.socket, Duration::from_secs(1_000)).await?;
+            let (message, sender_address) = receive_message(&self.socket, Duration::from_secs(1_000)).await?;
             match serde_json::from_str::<TimeMessage>(&message) {
                 Ok(msg) => {
                     match msg.msg_type.as_str() {
@@ -42,8 +40,7 @@ impl SlaveTimeAdjust {
                             }
                         },
                         "request_time" => {
-                            // Respond to the master's request for the current time
-                            self.report_current_time().await?;
+                            self.report_current_time(&sender_address.to_string()).await?;
                         },
                         _ => eprintln!("Unknown message type received: {}", msg.msg_type),
                     }
@@ -59,24 +56,19 @@ impl SlaveTimeAdjust {
         println!("Time adjusted by {}ms. New offset: {}ms", adjustment, *time_offset);
     }
 
-    pub async fn report_current_time(&self) -> Result<(), Box<dyn Error>> {
-        // Clone or copy necessary data before the async block
-        let socket_clone = self.socket.clone();
-        let master_address = self.master_address.clone();
-
-        // Scope to ensure MutexGuard is dropped before await
+    pub async fn report_current_time(&self, sender_address: &str) -> Result<(), Box<dyn Error>> {
         let current_time = {
-            let time_offset = self.time_offset.lock().unwrap(); // Lock is only held within this scope
-            Utc::now().timestamp_millis() + *time_offset // Calculate current time
-        }; // MutexGuard is dropped here
+            let time_offset = self.time_offset.lock().unwrap();
+            Utc::now().timestamp_millis() + *time_offset
+        };
 
         let message = serde_json::to_string(&TimeMessage {
             msg_type: "time_report".to_string(),
             time: Some(current_time),
-            adjustment: None, // Not used for time reports, can be None
+            adjustment: None,
         })?;
 
-        send_message(&socket_clone, &message, &master_address).await?;
+        send_message(&self.socket, &message, sender_address).await?;
         Ok(())
     }
 }
